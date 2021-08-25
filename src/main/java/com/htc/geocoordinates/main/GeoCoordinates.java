@@ -9,6 +9,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -24,7 +26,8 @@ import com.htc.geocoordinates.serviceImpl.GeoCoordinatesJSONXMLServiceImpl;
 import com.htc.geocoordinates.util.GeoCoordinatesConstants;
 
 /**
- * Represents a Class for GeoCoordinates  to hit the Receiver API and get the Response
+ * Represents a Class for GeoCoordinates to hit the Receiver API and get the
+ * Response
  * 
  * @author HTC Global Service
  * @version 1.0
@@ -42,7 +45,7 @@ public class GeoCoordinates implements RequestHandler<APIGatewayProxyRequestEven
 	GeoCoordinatesJSONXMLServiceImpl jsonxmlService = new GeoCoordinatesJSONXMLServiceImpl();
 
 	/**
-	 * This method is used to handle Initial Request from OrderHive
+	 * This method is used to handle initial request from SAP
 	 * 
 	 * @param input, context
 	 * @return
@@ -59,7 +62,7 @@ public class GeoCoordinates implements RequestHandler<APIGatewayProxyRequestEven
 		try {
 			geoCodeLocation = jsonxmlService.converter(geoCodeinputJSON.getBody().toString(),
 					GeoCoordinatesConstants.ROOT);
-			LOGGER.info("Successfully invoked the converted and converted the orderhive JSON to Locus XML");
+			logger.log("Successfully invoked the converted and converted the orderhive JSON to Locus XML");
 		} catch (JSONException e) {
 			LOGGER.error("Error occured while converting from JSON TO XML: " + e);
 		}
@@ -69,100 +72,87 @@ public class GeoCoordinates implements RequestHandler<APIGatewayProxyRequestEven
 		// After successfully converted the JSON to XML, Trying to call the OpenText
 		// API'S to process.
 		if (!geoCodeLocation.isEmpty()) {
-			System.out.println("pass3");
-			ResponseEntity<String> receiverResponse = getResponseFromReceiverAPI(geoCodeLocation);
-			logger.log("Got the response in main method");
-			System.out.println("pass11");
-
+		
+			ResponseEntity<String> receiverResponse = getResponseFromReceiverAPI(geoCodeLocation,logger);
+		
 			System.out.println("Receiver Response is :\t" + receiverResponse);
 
 			if (receiverResponse.getStatusCode().value() == (HttpStatus.OK.value())) {
-				response = buildJSONToXMLConvertedResponse(receiverResponse, GeoCoordinatesConstants.SUCCESS);
-				System.out.println("pass12");
+				response = apiGetwayProxyResponse(receiverResponse, GeoCoordinatesConstants.SUCCESS,logger);
 			} else {
-				response = buildJSONToXMLConvertedResponse(receiverResponse, GeoCoordinatesConstants.FAILURE);
-				/*
-				 * boolean successFlag = false; for (int count = 1; count <
-				 * GeoCoordinatesConstants.URL_CALLING_COUNT; count++) {
-				 * 
-				 * receiverResponse = getResponseFromReceiverAPI(geoCodeLocation); if
-				 * (receiverResponse.getStatusCode().equals(HttpStatus.OK)) successFlag = true;
-				 * 
-				 * LOGGER.info("Success Flag::" + successFlag);
-				 * 
-				 * if (successFlag == true) { response =
-				 * buildJSONToXMLConvertedResponse(receiverResponse,
-				 * GeoCoordinatesConstants.SUCCESS); break; } else { if (count == 3) {
-				 * LOGGER.info("Going to build Final Response after hitting three times:");
-				 * response = buildJSONToXMLConvertedResponse(receiverResponse,
-				 * GeoCoordinatesConstants.FAILURE); break; } }
-				 * 
-				 * } System.out.println("pass13");
-				 */
+				response = apiGetwayProxyResponse(receiverResponse, GeoCoordinatesConstants.FAILURE,logger);
 			}
 		} else {
 			response.setStatusCode(HttpStatus.CONFLICT.value());
 			response.setBody(GeoCoordinatesConstants.ERROR_IN_PROCESSING);
 		}
-
 		System.out.println("Final Response  :" + response);
-
-		response.setStatusCode(HttpStatus.OK.value());
 		return response;
 	}
 
-	private ResponseEntity<String> getResponseFromReceiverAPI(String requestXML) {
+	private ResponseEntity<String> getResponseFromReceiverAPI(String requestXML,LambdaLogger logger) {
 
-		System.out.println("pass4");
 		ResponseEntity<String> receiverResponse = null;
 
 		try {
-			String endPointUrl = buildUrl();
-			System.out.println("pass5");
+			String endPointUrl = buildUrl(logger);
 
 			// Getting Headers
 			HttpHeaders headers = jsonxmlService.setHeaders();
-			System.out.println("pass6");
 			RestTemplate restTemplate = new RestTemplate(getClientHttpRequestFactory());
-			System.out.println("pass7");
-			LOGGER.info("Rest Template Obj initialized");
+			logger.log("Rest Template Obj initialized");
 			HttpEntity<String> entity = new HttpEntity<String>(requestXML, headers);
-			System.out.println("pass8");
-			LOGGER.info("HttpEntity Body As aString::" + entity.getBody().toString());
-			LOGGER.info("Going to call Open Text API::" + endPointUrl);
-			System.out.println("pass9");
+			logger.log("HttpEntity Body As aString::" + entity.getBody().toString());
+			logger.log("Going to call Open Text API::" + endPointUrl);
+			
 			// restTemplate.getInterceptors().add(new
 			// BasicAuthorizationInterceptor(GeoCoordinatesConstants.CLIENT_ID,
 			// GeoCoordinatesConstants.AUTHORIZATION_KEY));
 
 			// send request and parse result
+			if(endPointUrl!=null)
 			receiverResponse = restTemplate.exchange(endPointUrl, HttpMethod.POST, entity, String.class);
-			System.out.println("pass10");
+		} catch (HttpClientErrorException e) {
+			//System.out.println("inside HttpClientErrorException");
+			receiverResponse = new ResponseEntity<String>(e.getStatusCode());
+
+			LOGGER.error(GeoCoordinatesConstants.ERROR_MESSAGE + e.getMessage());
 		} catch (RestClientException e) {
-			
+			//System.out.println("inside HttpClientErrorException");
+			receiverResponse = new ResponseEntity<String>(((HttpStatusCodeException) e).getStatusCode());
 			LOGGER.error(GeoCoordinatesConstants.ERROR_MESSAGE + e.getMessage());
 		}
+
 		catch (Exception e) {
+			//System.out.println("inside Exception");
+			receiverResponse = new ResponseEntity<String>(((HttpStatusCodeException) e).getStatusCode());
 			LOGGER.error(GeoCoordinatesConstants.ERROR_MESSAGE + e.getMessage());
 		}
 		return receiverResponse;
 	}
 
-	public String buildUrl() {
+	/**
+	 * This private method is used to build the URL to call the receiver API.
+	 */
+	private String buildUrl(LambdaLogger logger) {
 		String receiverEndPointURL = null;
 		StringBuilder endPointURLBuilder = null;
 		try {
 			endPointURLBuilder = new StringBuilder(System.getenv("RECEIVER_END_POINT_URL"));
 		} catch (Exception e) {
-			LOGGER.info("Unable to find RECEIVER_END_POINT_URL from environment variable.");
-			throw new GeoCoordinatesException("Unable to find RECEIVER_END_POINT_URL from environment variable.");
+			logger.log("Unable to find RECEIVER_END_POINT_URL from environment variable or incorrect EndPointURL.");
+			throw new GeoCoordinatesException(
+					"Unable to find RECEIVER_END_POINT_URL from environment variable or incorrect EndPointURL.");
 
 		}
-		if(endPointURLBuilder!=null)
-		receiverEndPointURL = endPointURLBuilder.toString();
+		if (endPointURLBuilder != null)
+			receiverEndPointURL = endPointURLBuilder.toString();
 		return receiverEndPointURL;
 	}
 
+	/**
+	 * This private method is used to set the connection and reading time out.
+	 */
 	private SimpleClientHttpRequestFactory getClientHttpRequestFactory() {
 		SimpleClientHttpRequestFactory clientHttpRequestFactory = new SimpleClientHttpRequestFactory();
 		// Connect timeout
@@ -172,13 +162,16 @@ public class GeoCoordinates implements RequestHandler<APIGatewayProxyRequestEven
 		return clientHttpRequestFactory;
 	}
 
-	private APIGatewayProxyResponseEvent buildJSONToXMLConvertedResponse(ResponseEntity<String> receiverResponse,
-			String status) {
+	/**
+	 * This private method is used to build the URL to call the receiver API.
+	 */
+	private APIGatewayProxyResponseEvent apiGetwayProxyResponse(ResponseEntity<String> receiverResponse,
+			String status,LambdaLogger logger) {
 		APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
 
 		if (status.equalsIgnoreCase(GeoCoordinatesConstants.SUCCESS)) {
 			response.setStatusCode(HttpStatus.OK.value());
-			LOGGER.info(GeoCoordinatesConstants.SUCCESS_CODE + HttpStatus.OK.value());
+			logger.log(GeoCoordinatesConstants.SUCCESS_CODE + HttpStatus.OK.value());
 
 		} else {
 			response.setStatusCode(receiverResponse.getStatusCodeValue());

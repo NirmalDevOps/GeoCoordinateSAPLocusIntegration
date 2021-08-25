@@ -27,6 +27,10 @@ public class GeoCoordinatesJSONXMLServiceImpl implements GeoCoordinatesJSONXMLSe
 
 	String xmlResponse = null;
 
+	
+	/**
+	 * This method is used to get the header details from environment variable - AWS
+	 */
 	public HttpHeaders setHeaders() {
 		HttpHeaders responseHeaders = new HttpHeaders();
 
@@ -47,6 +51,9 @@ public class GeoCoordinatesJSONXMLServiceImpl implements GeoCoordinatesJSONXMLSe
 		return responseHeaders;
 	}
 
+	/**
+	 * This method is used to return response entity with body and header
+	 */
 	@Override
 	public ResponseEntity<String> responseWithHeader(String inputJSON) throws JSONException {
 
@@ -66,6 +73,9 @@ public class GeoCoordinatesJSONXMLServiceImpl implements GeoCoordinatesJSONXMLSe
 		}
 	}
 
+	/**
+	 * This method is used to convert the input JSON into XML with Encoding UTF-8
+	 */
 	public String converter(String json, String root) throws JSONException {
 		try {
 			JSONObject jsonObject = new JSONObject(json);
